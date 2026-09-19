@@ -1,6 +1,7 @@
-import express from "express";
-import corsPkg from "cors";
+import express, { type RequestHandler } from "express";
+import cors from "cors";
 import helmetPkg from "helmet";
+import type { HelmetOptions } from "helmet";
 import { clerkMiddleware } from "@clerk/express";
 import { notFoundHandler } from "./middlewares/notFoundHandler.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
@@ -8,14 +9,18 @@ import { apiRouter } from "./routes/index.js";
 import { corsOrigins } from "./config/env.js";
 import path from "node:path";
 
-// Some build pipelines (Vercel's TS check among them) resolve these
-// packages' CJS default export as a namespace object instead of the
-// callable function, even though esModuleInterop makes it work locally.
-// Unwrap defensively so it works either way.
-const cors = ((corsPkg as unknown as { default?: typeof corsPkg }).default ??
-  corsPkg) as typeof corsPkg;
-const helmet = ((helmetPkg as unknown as { default?: typeof helmetPkg })
-  .default ?? helmetPkg) as typeof helmetPkg;
+// helmet's CJS type declarations (index.d.cts) describe an ES-style
+// `export default`, but its runtime is `module.exports = helmet`. Some
+// TS resolutions (Vercel's build) therefore type the default import as
+// the non-callable exports object. Unwrap at runtime and give it an
+// explicit callable type that doesn't depend on how the import resolved.
+type HelmetFn = (options?: Readonly<HelmetOptions>) => RequestHandler;
+
+const helmet: HelmetFn = (() => {
+  const mod = helmetPkg as unknown;
+  if (typeof mod === "function") return mod as HelmetFn;
+  return (mod as { default: HelmetFn }).default;
+})();
 
 export function createApp() {
   const app = express();
