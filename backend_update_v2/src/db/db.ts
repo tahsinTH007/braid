@@ -3,17 +3,26 @@ import { Pool, QueryResult, QueryResultRow } from "pg";
 import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
 
-export const pool = new Pool({
-  host: env.DB_HOST,
-  port: Number(env.DB_PORT),
-  database: env.DB_NAME,
-  user: env.DB_USER,
-  password: env.DB_PASSWORD,
+export const pool = env.NEON_BD_URL
+  ? new Pool({
+      connectionString: env.NEON_BD_URL,
+      ssl: { rejectUnauthorized: false },
 
-  max: 10, // max connections
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-});
+      max: 10, // max connections
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    })
+  : new Pool({
+      host: env.DB_HOST,
+      port: Number(env.DB_PORT),
+      database: env.DB_NAME,
+      user: env.DB_USER,
+      password: env.DB_PASSWORD,
+
+      max: 10, // max connections
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    });
 
 // 🔥 Catch unexpected pool errors
 pool.on("error", (err) => {
