@@ -1,6 +1,6 @@
 "use client";
 
-import { apiGet, createBrowserApiClient } from "@/lib/api-client";
+import { apiGet, apiPost, createBrowserApiClient } from "@/lib/api-client";
 import {
   ChatUser,
   DirectMessage,
@@ -12,6 +12,7 @@ import { useAuth } from "@clerk/nextjs";
 import {
   ChangeEvent,
   KeyboardEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -26,6 +27,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { toast } from "sonner";
 import ImageUploadButton from "./image-upload-button";
 import { getInitials } from "@/lib/utils";
+
+const MESSAGES_POLL_INTERVAL_MS = 4_000;
 
 type DirectChatPanelProps = {
   otherUserId: number;
@@ -55,11 +58,9 @@ function DirectChatPanel(props: DirectChatPanelProps) {
     messagesEndRef?.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function load() {
-      setIsLoading(true);
+  const loadMessages = useCallback(
+    async (showSpinner: boolean) => {
+      if (showSpinner) setIsLoading(true);
 
       try {
         const res = await apiGet<DirectMessage[]>(
@@ -69,28 +70,40 @@ function DirectChatPanel(props: DirectChatPanelProps) {
             params: {
               limit: 100,
             },
-          }
+          },
         );
 
-        if (!isMounted) return;
         setMessages(mapDirectMessagesResponse(res));
       } catch (err) {
-        toast.error("Failed to load messages", {
-          description: "Please try again.",
-        });
+        if (showSpinner) {
+          toast.error("Failed to load messages", {
+            description: "Please try again.",
+          });
+        }
       } finally {
-        setIsLoading(false);
+        if (showSpinner) setIsLoading(false);
       }
-    }
+    },
+    [apiClient, otherUserId],
+  );
 
+  useEffect(() => {
     if (otherUserId) {
-      load();
+      loadMessages(true);
     }
+  }, [loadMessages, otherUserId]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [apiClient, otherUserId]);
+  // Fall back to polling for new messages when there's no live socket
+  // connection (e.g. deployed on a serverless host without WebSockets).
+  useEffect(() => {
+    if (connected) return;
+
+    const interval = setInterval(
+      () => loadMessages(false),
+      MESSAGES_POLL_INTERVAL_MS,
+    );
+    return () => clearInterval(interval);
+  }, [connected, loadMessages]);
 
   useEffect(() => {
     if (!socket) return;
@@ -105,7 +118,9 @@ function DirectChatPanel(props: DirectChatPanelProps) {
         return;
       }
 
-      setMessages((prev) => [...prev, mapped]);
+      setMessages((prev) =>
+        prev.some((m) => m.id === mapped.id) ? prev : [...prev, mapped],
+      );
     }
 
     function handleTyping(payload: {
@@ -168,14 +183,6 @@ function DirectChatPanel(props: DirectChatPanelProps) {
   }
 
   async function handleSend() {
-    if (!socket || !connected) {
-      toast("Not connected", {
-        description: "Realtime connection is not established yet!",
-      });
-
-      return;
-    }
-
     const body = input.trim();
 
     if (!body && !imageUrl) return;
@@ -183,15 +190,25 @@ function DirectChatPanel(props: DirectChatPanelProps) {
     setSending(true);
 
     try {
-      socket.emit("dm:send", {
-        recipientUserId: otherUserId,
+      const created = await apiPost<
+        { body: string | null; imageUrl: string | null },
+        DirectMessage
+      >(apiClient, `/api/chat/conversations/${otherUserId}/messages`, {
         body: body || null,
         imageUrl: imageUrl || null,
       });
 
+      setMessages((prev) =>
+        prev.some((m) => m.id === created.id) ? prev : [...prev, created],
+      );
+
       setInput("");
       setImageUrl(null);
       setSendTyping(false);
+    } catch (err) {
+      toast.error("Failed to send message", {
+        description: "Please try again.",
+      });
     } finally {
       setSending(false);
     }
@@ -241,16 +258,21 @@ function DirectChatPanel(props: DirectChatPanelProps) {
                 ? "bg-primary/10 text-primary"
                 : "bg-accent text-accent-foreground"
             }`}
+            title={
+              connected
+                ? "Live connection established"
+                : "Using periodic refresh instead of a live connection"
+            }
           >
             {connected ? (
               <>
                 <Wifi className="w-3 h-3" />
-                Online
+                Live
               </>
             ) : (
               <>
                 <WifiOff className="w-3 h-3" />
-                Offline
+                Syncing
               </>
             )}
           </span>
@@ -388,13 +410,13 @@ function DirectChatPanel(props: DirectChatPanelProps) {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
-              disabled={!connected || sending}
+              disabled={sending}
               className="min-h-14 resize-none border-border bg-background text-sm"
             />
             <Button
               size="icon"
               onClick={handleSend}
-              disabled={sending || !connected || (!input.trim() && !imageUrl)}
+              disabled={sending || (!input.trim() && !imageUrl)}
             >
               <Send className="w-4 h-4" />
             </Button>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "../ui/button";
 import { Bell, Menu, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSocket } from "@/hooks/use-socket";
 import { apiGet, createBrowserApiClient } from "@/lib/api-client";
 import { Notification } from "@/types/notification";
@@ -26,31 +26,32 @@ function Navbar() {
 
   const apiClient = useMemo(() => createBrowserApiClient(getToken), [getToken]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadUnreadNotifications() {
-      if (!userId) {
-        if (isMounted) setUnreadCount(0);
-        return;
-      }
-
-      try {
-        const data = await apiGet<Notification[]>(
-          apiClient,
-          "/api/notifications?unreadOnly=true"
-        );
-
-        if (!isMounted) return;
-
-        setUnreadCount(data.length);
-      } catch (e) {
-        if (!isMounted) return;
-      }
+  const loadUnreadNotifications = useCallback(async () => {
+    if (!userId) {
+      setUnreadCount(0);
+      return;
     }
 
+    try {
+      const data = await apiGet<Notification[]>(
+        apiClient,
+        "/api/notifications?unreadOnly=true"
+      );
+
+      setUnreadCount(data.length);
+    } catch (e) {
+      // best-effort, ignore failures
+    }
+  }, [apiClient, userId, setUnreadCount]);
+
+  useEffect(() => {
     loadUnreadNotifications();
-  }, [userId]);
+
+    // Polling keeps the unread count in sync even without a live socket
+    // connection (e.g. serverless deployments without WebSockets).
+    const interval = setInterval(loadUnreadNotifications, 20_000);
+    return () => clearInterval(interval);
+  }, [loadUnreadNotifications]);
 
   useEffect(() => {
     if (!socket) {

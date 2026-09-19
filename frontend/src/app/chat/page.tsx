@@ -10,8 +10,11 @@ import { cn, getInitials } from "@/lib/utils";
 import { ChatUser } from "@/types/chat";
 import { useAuth } from "@clerk/nextjs";
 import { MessageSquare, Search, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
+const USERS_POLL_INTERVAL_MS = 12_000;
+const HEARTBEAT_INTERVAL_MS = 25_000;
 
 function UserListSkeleton() {
   return (
@@ -38,66 +41,74 @@ function Chat() {
   const [users, setUsers] = useState<ChatUser[]>([]);
   const [activeUserId, setActiveUserId] = useState<number | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [showListOnMobile, setShowListOnMobile] = useState(true);
 
-  useEffect(() => {
-    let isMounted = true;
-    async function load() {
-      setLoadingUsers(true);
+  const activeUserIdRef = useRef<number | null>(null);
+  activeUserIdRef.current = activeUserId;
+
+  const loadUsers = useCallback(
+    async (showSpinner: boolean) => {
+      if (showSpinner) setLoadingUsers(true);
 
       try {
         const res = await apiGet<ChatUser[]>(apiClient, "/api/chat/users");
 
-        if (!isMounted) return;
         const finalRes = res.map((row) => ({
           id: Number(row.id),
           displayName: row.displayName ?? null,
           handle: row.handle ?? null,
           avatarUrl: row.avatarUrl ?? null,
+          isOnline: Boolean(row.isOnline),
         }));
         setUsers(finalRes);
 
-        if (res.length > 0 && activeUserId === null) {
-          setActiveUserId(res[0].id);
+        if (finalRes.length > 0 && activeUserIdRef.current === null) {
+          setActiveUserId(finalRes[0].id);
         }
       } catch (err) {
-        toast.error("Failed to load users", {
-          description: "Please refresh the page to try again.",
-        });
+        if (showSpinner) {
+          toast.error("Failed to load users", {
+            description: "Please refresh the page to try again.",
+          });
+        }
       } finally {
-        setLoadingUsers(false);
+        if (showSpinner) setLoadingUsers(false);
+      }
+    },
+    [apiClient],
+  );
+
+  // Initial load + periodic refresh so online status stays current even
+  // without a live socket connection (e.g. serverless deployments).
+  useEffect(() => {
+    loadUsers(true);
+
+    const interval = setInterval(() => loadUsers(false), USERS_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [loadUsers]);
+
+  // Heartbeat: tells the backend "I'm here" so other clients see us as online.
+  useEffect(() => {
+    async function ping() {
+      try {
+        await apiClient.post("/api/chat/heartbeat");
+      } catch {
+        // best-effort, ignore failures
       }
     }
-    load();
 
-    return () => {
-      isMounted = false;
-    };
-  }, [getToken]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    function handlePresense(payload: { onlineUserIds?: number[] }) {
-      const list = payload?.onlineUserIds ?? [];
-      setOnlineUserIds(list);
-    }
-
-    socket.on("presence:update", handlePresense);
-
-    return () => {
-      socket.off("presence:update", handlePresense);
-    };
-  }, [socket]);
+    ping();
+    const interval = setInterval(ping, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [apiClient]);
 
   const activeUser =
     activeUserId !== null
       ? (users.find((u) => u.id === activeUserId) ?? null)
       : null;
 
-  const onlineCount = users.filter((u) => onlineUserIds.includes(u.id)).length;
+  const onlineCount = users.filter((u) => u.isOnline).length;
 
   const filteredUsers = users
     .filter((user) => {
@@ -109,11 +120,7 @@ function Chat() {
         user.displayName?.toLowerCase().includes(query)
       );
     })
-    .sort((a, b) => {
-      const aOnline = onlineUserIds.includes(a.id) ? 1 : 0;
-      const bOnline = onlineUserIds.includes(b.id) ? 1 : 0;
-      return bOnline - aOnline;
-    });
+    .sort((a, b) => Number(b.isOnline) - Number(a.isOnline));
 
   return (
     <div className="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-6xl gap-6 py-6">
@@ -155,7 +162,7 @@ function Chat() {
 
             {!loadingUsers &&
               filteredUsers.map((user) => {
-                const isOnline = onlineUserIds.includes(user.id);
+                const isOnline = !!user.isOnline;
                 const isActive = activeUserId === user.id;
 
                 const label =

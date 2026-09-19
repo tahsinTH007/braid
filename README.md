@@ -16,14 +16,15 @@ A community forum with threaded discussions, replies, likes, and real-time direc
 - [Project structure](#project-structure)
 - [Getting started](#getting-started)
 - [Scripts](#scripts)
+- [Realtime & serverless](#realtime--serverless)
 - [Deployment](#deployment)
 
 ## Features
 
 - **Threads** — browse, search, and filter discussion threads by category
 - **Replies & likes** — comment on threads and like the ones you're into
-- **Direct messages** — real-time 1:1 chat with typing indicators, online presence, and image attachments
-- **Notifications** — real-time alerts when someone replies to or likes your thread
+- **Direct messages** — 1:1 chat with typing indicators, online presence, and image attachments. Instant via Socket.io when the host supports it, otherwise falls back to REST + polling (see [Realtime & serverless](#realtime--serverless))
+- **Notifications** — alerts when someone replies to or likes your thread (live via socket, or synced by polling)
 - **Profiles** — display name, handle, bio, and avatar (upload an image or paste a URL)
 - **Auth** — sign in/up with [Clerk](https://clerk.com)
 
@@ -32,7 +33,7 @@ A community forum with threaded discussions, replies, likes, and real-time direc
 | | |
 |---|---|
 | **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Clerk, Socket.io client |
-| **Backend** | Express, TypeScript, Socket.io, PostgreSQL (`pg`), Clerk, Multer |
+| **Backend** | Express, TypeScript, Socket.io, PostgreSQL (`pg`), Clerk, Multer, Vercel Blob |
 | **Database** | PostgreSQL ([Neon](https://neon.tech) or any Postgres host) |
 
 ## Project structure
@@ -47,10 +48,13 @@ line_chat_app/
 │       ├── hooks/           # socket + notification count hooks
 │       └── lib/             # API client, utils
 ├── backend_update_v2/    # Express API + Socket.io server
+│   ├── api/index.ts        # Vercel serverless entry point (Express app, no sockets)
+│   ├── vercel.json          # Vercel build config for the API
 │   └── src/
+│       ├── server.ts        # traditional entry point (http server + Socket.io)
 │       ├── routes/          # HTTP route handlers
 │       ├── modules/         # domain logic (threads, chat, users, notifications)
-│       ├── realtime/        # Socket.io setup + presence
+│       ├── realtime/        # Socket.io setup (typing indicator, message push)
 │       ├── migrations/      # SQL schema migrations
 │       └── db/               # migrate.ts / seed.ts scripts
 └── docker-compose.yml    # local Postgres container (optional)
@@ -126,12 +130,33 @@ cd frontend && npm run dev
 | `npm run migrate` | Apply SQL migrations |
 | `npm run seed` | Insert mock data (idempotent) |
 
+## Realtime & serverless
+
+Socket.io needs a persistent connection, which serverless platforms like Vercel don't provide (functions are stateless and spin down between requests). So the app runs in one of two modes automatically, no config needed:
+
+- **Socket connects** (traditional host: Render, Railway, Fly, a VPS, or `npm run dev` locally) → messages, typing, and notifications push instantly.
+- **Socket can't connect** (Vercel) → sending falls back to a REST endpoint, new messages/notifications are picked up by short polling (a few seconds), and "online" status comes from a heartbeat the client pings every ~25s instead of a live disconnect event.
+
+Either way the UI and API are identical — only the delivery speed of realtime updates changes.
+
 ## Deployment
 
-Vercel hosts the frontend well, but its serverless functions don't support the backend's persistent Socket.io connections. Recommended split:
+### Option A — both on Vercel
 
-- **Frontend** → [Vercel](https://vercel.com), root directory set to `frontend` (uses the included [`frontend/vercel.json`](frontend/vercel.json))
-- **Backend** → a host with long-running processes, e.g. [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io) — build with `npm run build`, start with `npm start`
-- **Database** → a managed Postgres such as [Neon](https://neon.tech), Render, or Supabase — set `NEON_BD_URL` (or the discrete `DB_*` vars) on the backend
+- **Frontend** → import the repo, root directory `frontend` (uses [`frontend/vercel.json`](frontend/vercel.json))
+- **Backend** → import the repo **again as a second project**, root directory `backend_update_v2` (uses [`backend_update_v2/vercel.json`](backend_update_v2/vercel.json), which routes all requests to [`api/index.ts`](backend_update_v2/api/index.ts))
+- **Database** → [Neon](https://neon.tech) (or any Postgres) — set `NEON_BD_URL` in the backend project's environment variables
+- **File uploads** → enable **Blob** storage on the backend Vercel project; it injects `BLOB_READ_WRITE_TOKEN` automatically, which switches uploads from local disk to Blob
+- Set `CORS_ORIGIN` on the backend to the frontend's `*.vercel.app` URL, and `NEXT_PUBLIC_API_BASE_URL` on the frontend to the backend's `*.vercel.app` URL
+- Run `npm run migrate` (and optionally `npm run seed`) against the Neon database once, from your machine, pointed at the same `NEON_BD_URL`
 
-After deploying, set `CORS_ORIGIN` on the backend to your Vercel domain, and `NEXT_PUBLIC_API_BASE_URL` on the frontend to your backend's public URL.
+This gets real-time-ish chat (polling, a few seconds of lag) with everything on one platform. See [Realtime & serverless](#realtime--serverless) above for what that trades off.
+
+### Option B — frontend on Vercel, backend on a persistent host
+
+- **Frontend** → [Vercel](https://vercel.com), root directory `frontend`
+- **Backend** → [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io) — build with `npm run build`, start with `npm start` (uses `src/server.ts`, the traditional entry point)
+- **Database** → [Neon](https://neon.tech), Render, or Supabase
+- Uploaded images write to local disk on the host (fine as long as it has a persistent filesystem, unlike Vercel)
+
+This keeps Socket.io fully instant since the backend is always-on.

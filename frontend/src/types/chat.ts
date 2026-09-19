@@ -3,6 +3,7 @@ export type ChatUser = {
   displayName: string | null;
   handle: string | null;
   avatarUrl: string | null;
+  isOnline?: boolean;
 };
 
 export type DirectMessage = {

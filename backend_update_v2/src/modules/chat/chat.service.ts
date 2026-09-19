@@ -1,14 +1,17 @@
 import { query } from "../../db/db.js";
 
+const ONLINE_THRESHOLD_SECONDS = 60;
+
 export async function listChatUsers(currentUserId: number) {
   try {
     const result = await query(
       `
-            SELECT 
+            SELECT
               id,
               display_name,
               handle,
-              avatar_url
+              avatar_url,
+              last_seen_at > NOW() - INTERVAL '${ONLINE_THRESHOLD_SECONDS} seconds' AS is_online
             FROM users
             WHERE id <> $1
             ORDER BY COALESCE(display_name, handle, 'User') ASC
@@ -21,10 +24,22 @@ export async function listChatUsers(currentUserId: number) {
       displayName: (row.display_name as string) ?? null,
       handle: (row.handle as string) ?? null,
       avatarUrl: (row.avatar_url as string) ?? null,
+      isOnline: Boolean(row.is_online),
     }));
   } catch (err) {
     throw err;
   }
+}
+
+export async function touchLastSeen(userId: number) {
+  await query(
+    `
+    UPDATE users
+    SET last_seen_at = NOW()
+    WHERE id = $1
+    `,
+    [userId],
+  );
 }
 
 export async function listDirectMessages(params: {
