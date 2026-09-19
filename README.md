@@ -47,7 +47,7 @@ line_chat_app/
 │       ├── components/      # UI + feature components
 │       ├── hooks/           # socket + notification count hooks
 │       └── lib/             # API client, utils
-├── backend_update_v2/    # Express API + Socket.io server
+├── backend/               # Express API + Socket.io server
 │   ├── api/index.ts        # Vercel serverless entry point (Express app, no sockets)
 │   ├── vercel.json          # Vercel build config for the API
 │   └── src/
@@ -75,7 +75,7 @@ git clone git@github.com:tahsinTH007/braid.git
 cd braid
 
 cd frontend && npm install
-cd ../backend_update_v2 && npm install
+cd ../backend && npm install
 ```
 
 ### 2. Configure environment variables
@@ -84,16 +84,16 @@ Copy the example env files and fill in your own values:
 
 ```bash
 cp frontend/.env.example frontend/.env
-cp backend_update_v2/.env.example backend_update_v2/.env
+cp backend/.env.example backend/.env
 ```
 
-- `backend_update_v2/.env` — database connection (either discrete `DB_*` vars, or a single `NEON_BD_URL` connection string), `CORS_ORIGIN`, and your Clerk secret/publishable keys
+- `backend/.env` — database connection (either discrete `DB_*` vars, or a single `NEON_BD_URL` connection string), `CORS_ORIGIN`, and your Clerk secret/publishable keys
 - `frontend/.env` — your Clerk publishable/secret keys, and `NEXT_PUBLIC_API_BASE_URL` pointing at the backend
 
 ### 3. Set up the database
 
 ```bash
-cd backend_update_v2
+cd backend
 npm run migrate   # creates all tables
 npm run seed      # optional: adds mock users, threads, replies, likes, and DMs
 ```
@@ -104,7 +104,7 @@ In two terminals:
 
 ```bash
 # backend — http://localhost:5000 (or PORT from .env)
-cd backend_update_v2 && npm run dev
+cd backend && npm run dev
 
 # frontend — http://localhost:3000
 cd frontend && npm run dev
@@ -120,7 +120,7 @@ cd frontend && npm run dev
 | `npm run build` | Production build |
 | `npm start` | Serve the production build |
 
-**`backend_update_v2/`**
+**`backend/`**
 
 | Command | Description |
 |---|---|
@@ -144,7 +144,7 @@ Either way the UI and API are identical — only the delivery speed of realtime 
 ### Option A — both on Vercel
 
 - **Frontend** → import the repo, root directory `frontend` (uses [`frontend/vercel.json`](frontend/vercel.json))
-- **Backend** → import the repo **again as a second project**, root directory `backend_update_v2` (uses [`backend_update_v2/vercel.json`](backend_update_v2/vercel.json), which routes all requests to [`api/index.ts`](backend_update_v2/api/index.ts))
+- **Backend** → import the repo **again as a second project**, root directory `backend` (uses [`backend/vercel.json`](backend/vercel.json), which routes all requests to [`api/index.ts`](backend/api/index.ts))
 - **Database** → [Neon](https://neon.tech) (or any Postgres) — set `NEON_BD_URL` in the backend project's environment variables
 - **File uploads** → enable **Blob** storage on the backend Vercel project; it injects `BLOB_READ_WRITE_TOKEN` automatically, which switches uploads from local disk to Blob
 - Set `CORS_ORIGIN` on the backend to the frontend's `*.vercel.app` URL, and `NEXT_PUBLIC_API_BASE_URL` on the frontend to the backend's `*.vercel.app` URL
