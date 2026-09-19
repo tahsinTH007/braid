@@ -99,15 +99,21 @@ function Chat() {
 
   const onlineCount = users.filter((u) => onlineUserIds.includes(u.id)).length;
 
-  const filteredUsers = users.filter((user) => {
-    const query = userSearch.trim().toLowerCase();
-    if (!query) return true;
+  const filteredUsers = users
+    .filter((user) => {
+      const query = userSearch.trim().toLowerCase();
+      if (!query) return true;
 
-    return (
-      user.handle?.toLowerCase().includes(query) ||
-      user.displayName?.toLowerCase().includes(query)
-    );
-  });
+      return (
+        user.handle?.toLowerCase().includes(query) ||
+        user.displayName?.toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      const aOnline = onlineUserIds.includes(a.id) ? 1 : 0;
+      const bOnline = onlineUserIds.includes(b.id) ? 1 : 0;
+      return bOnline - aOnline;
+    });
 
   return (
     <div className="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-6xl gap-6 py-6">
