@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AceForum",
+  title: "Braid",
   description: "A community forum with threads, replies, and direct chat.",
 };
 

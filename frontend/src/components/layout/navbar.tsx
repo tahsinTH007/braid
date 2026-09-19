@@ -12,6 +12,7 @@ import { Notification } from "@/types/notification";
 import { useNotificationCount } from "@/hooks/use-notification-count";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Logo } from "./logo";
 
 function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -111,14 +112,8 @@ function Navbar() {
     <header className="sticky top-0 z-40 border-b border-sidebar-border bg-sidebar/95 backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-6">
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-bold text-lg text-sidebar-foreground"
-          >
-            <span className="bg-linear-to-r from-primary to-chart-2 bg-clip-text text-transparent">
-              Ace
-            </span>
-            <span className="text-foreground/90">Forum</span>
+          <Link href="/" className="flex items-center">
+            <Logo />
           </Link>
           <nav className="hidden items-center gap-1 md:flex">
             {navItems.map(renderNavLinks)}

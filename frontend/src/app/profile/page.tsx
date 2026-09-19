@@ -1,5 +1,5 @@
 "use client";
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,11 +10,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import ImageUploadButton from "@/components/chat/image-upload-button";
 import { apiGet, apiPatch, createBrowserApiClient } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import { SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Save, User } from "lucide-react";
+import { Mail, Save, User } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -50,6 +51,7 @@ function ProfilePage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
 
   const apiClient = useMemo(() => createBrowserApiClient(getToken), [getToken]);
 
@@ -116,6 +118,8 @@ function ProfilePage() {
           return;
         }
 
+        setEmail(getUserInfo.email ?? null);
+
         form.reset({
           displayName: getUserInfo.displayName ?? "",
           handle: getUserInfo.handle ?? "",
@@ -142,50 +146,70 @@ function ProfilePage() {
 
   return (
     <>
-      <SignedOut>User is signed out</SignedOut>
+      <SignedOut>
+        <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 py-20 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <User className="h-6 w-6 text-primary" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            You&apos;re signed out
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Sign in to view and edit your profile.
+          </p>
+        </div>
+      </SignedOut>
       <SignedIn>
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
           <div>
-            <h1 className="flex items-center text-3xl font-bold tracking-tight text-foreground">
-              <User className="w-8 h-8 text-primary" />
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+              <User className="h-7 w-7 text-primary" />
               Profile Settings
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Manage your profile information
+              Manage your public profile information
             </p>
           </div>
 
-          <Card className="border-border/70 bg-card">
-            <CardHeader className="pb-4">
-              <div className="flex items-start gap-6">
-                <Avatar className="h-20 w-20">
-                  {avatarUrlValue && (
-                    <AvatarImage
-                      src={avatarUrlValue || "/placeholder.xyz"}
-                      alt={displayNameValue ?? ""}
-                    />
-                  )}
-                </Avatar>
+          <Card className="overflow-hidden border-border/70 bg-card p-0">
+            <div className="h-20 bg-linear-to-r from-primary/40 via-chart-1/30 to-chart-3/30" />
+            <CardContent className="relative px-6 pb-6">
+              <Avatar className="-mt-10 h-20 w-20 border-4 border-card shadow-sm">
+                {avatarUrlValue && (
+                  <AvatarImage
+                    src={avatarUrlValue}
+                    alt={displayNameValue ?? ""}
+                  />
+                )}
+                <AvatarFallback className="bg-secondary text-lg text-foreground">
+                  {getInitials(displayNameValue || handleValue)}
+                </AvatarFallback>
+              </Avatar>
 
-                <div className="flex-1">
-                  <CardTitle className="text-2xl text-foreground">
-                    {displayNameValue || "Your display name"}
-                  </CardTitle>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span
-                      className={cn(
-                        "rounded-full px-3 py-1 text-xs font-medium",
-                        handleValue
-                          ? "bg-primary/10 text-primary"
-                          : "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      {handleValue ? `@${handleValue}` : "@handle"}
+              <div className="mt-3">
+                <CardTitle className="text-2xl text-foreground">
+                  {displayNameValue || "Your display name"}
+                </CardTitle>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-medium",
+                      handleValue
+                        ? "bg-primary/10 text-primary"
+                        : "bg-accent text-accent-foreground",
+                    )}
+                  >
+                    {handleValue ? `@${handleValue}` : "@handle"}
+                  </span>
+                  {email && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Mail className="h-3.5 w-3.5" />
+                      {email}
                     </span>
-                  </div>
+                  )}
                 </div>
               </div>
-            </CardHeader>
+            </CardContent>
           </Card>
 
           <Card className="border-border/70 bg-card">
@@ -274,13 +298,26 @@ function ProfilePage() {
                   >
                     Avatar URL
                   </label>
-                  <Input
-                    id="avatarUrl"
-                    placeholder="http://abc.com"
-                    {...form.register("avatarUrl")}
-                    disabled={isLoading || isSaving}
-                    className="border-border mt-2 bg-background/60 text-sm"
-                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      id="avatarUrl"
+                      placeholder="http://abc.com"
+                      {...form.register("avatarUrl")}
+                      disabled={isLoading || isSaving}
+                      className="border-border bg-background/60 text-sm"
+                    />
+                    <ImageUploadButton
+                      onImageUpload={(url) =>
+                        form.setValue("avatarUrl", url, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Paste a link, or upload an image.
+                  </p>
 
                   {errors.avatarUrl && (
                     <p className="text-xs text-destructive">

@@ -1,16 +1,33 @@
 "use client";
 
 import DirectChatPanel from "@/components/chat/direct-chat-panel";
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useSocket } from "@/hooks/use-socket";
 import { apiGet, createBrowserApiClient } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import { ChatUser } from "@/types/chat";
 import { useAuth } from "@clerk/nextjs";
-import { MessageSquare, Users } from "lucide-react";
+import { MessageSquare, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+function UserListSkeleton() {
+  return (
+    <div className="space-y-1 px-2">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 rounded-lg px-3 py-3">
+          <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+            <div className="h-2.5 w-12 animate-pulse rounded bg-muted" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Chat() {
   const { getToken } = useAuth();
@@ -22,6 +39,8 @@ function Chat() {
   const [activeUserId, setActiveUserId] = useState<number | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [showListOnMobile, setShowListOnMobile] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
@@ -80,28 +99,56 @@ function Chat() {
 
   const onlineCount = users.filter((u) => onlineUserIds.includes(u.id)).length;
 
+  const filteredUsers = users.filter((user) => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return true;
+
+    return (
+      user.handle?.toLowerCase().includes(query) ||
+      user.displayName?.toLowerCase().includes(query)
+    );
+  });
+
   return (
-    <div className="mx-auto max-w-6xl flex w-full flex-col gap-4 py-6 md:flex-row md:gap-6">
-      <aside className="w-full shrink-0 md:w-72">
-        <Card className="h-full border-border/70 bg-card md:sticky md:top-24">
-          <CardHeader className="pb-4">
+    <div className="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-6xl gap-6 py-6">
+      <aside
+        className={cn(
+          "w-full shrink-0 md:block md:w-72",
+          showListOnMobile ? "block" : "hidden",
+        )}
+      >
+        <Card className="flex h-full flex-col overflow-hidden border-border/70 bg-card py-4">
+          <CardHeader className="shrink-0 pb-3">
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-primary" />
+              <MessageSquare className="h-5 w-5 text-primary" />
               <CardTitle className="text-sm text-foreground">
                 Direct Messages
               </CardTitle>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {onlineCount} Online - {users.length} total
+              {onlineCount} online &middot; {users.length} total
             </p>
+            <div className="relative mt-2">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search people..."
+                className="h-8 bg-background/60 pl-8 text-xs"
+              />
+            </div>
           </CardHeader>
-          <CardContent className="flex max-h-[calc(100vh-12rem)] flex-col gap-1 overflow-y-auto">
-            {loadingUsers && (
-              <p className="text-muted-foreground">Loading users...</p>
+          <CardContent className="flex-1 space-y-1 overflow-y-auto px-2">
+            {loadingUsers && <UserListSkeleton />}
+
+            {!loadingUsers && filteredUsers.length === 0 && (
+              <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                No people match &ldquo;{userSearch}&rdquo;
+              </p>
             )}
 
             {!loadingUsers &&
-              users.map((user) => {
+              filteredUsers.map((user) => {
                 const isOnline = onlineUserIds.includes(user.id);
                 const isActive = activeUserId === user.id;
 
@@ -114,19 +161,33 @@ function Chat() {
                   <button
                     key={user.id}
                     type="button"
-                    onClick={() => setActiveUserId(user.id)}
+                    onClick={() => {
+                      setActiveUserId(user.id);
+                      setShowListOnMobile(false);
+                    }}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-xs transition-colors duration-150",
                       isActive
                         ? "bg-primary/20 text-primary ring-1 ring-primary/30"
-                        : "text-muted-foreground hover:bg-card/90",
+                        : "text-muted-foreground hover:bg-secondary/60",
                     )}
                   >
-                    <Avatar className="h-8 w-8">
-                      {user.avatarUrl && (
-                        <AvatarImage src={user.avatarUrl} alt={label} />
-                      )}
-                    </Avatar>
+                    <div className="relative shrink-0">
+                      <Avatar className="h-8 w-8">
+                        {user.avatarUrl && (
+                          <AvatarImage src={user.avatarUrl} alt={label} />
+                        )}
+                        <AvatarFallback className="bg-secondary text-[11px] text-foreground">
+                          {getInitials(user.handle || user.displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span
+                        className={cn(
+                          "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-card",
+                          isOnline ? "bg-primary" : "bg-muted-foreground/50",
+                        )}
+                      />
+                    </div>
                     <div className="min-w-0 flex flex-1 flex-col">
                       <span className="truncate text-[12px] font-medium text-foreground">
                         {label}
@@ -147,18 +208,24 @@ function Chat() {
         </Card>
       </aside>
 
-      <main className="min-h-[calc(100vh-8rem)] flex-1 md:min-h-auto">
+      <main
+        className={cn(
+          "min-h-0 flex-1",
+          showListOnMobile ? "hidden md:flex" : "flex",
+        )}
+      >
         {activeUserId && activeUser ? (
           <DirectChatPanel
             otherUserId={activeUserId}
             otherUser={activeUser}
             socket={socket}
             connected={connected}
+            onBack={() => setShowListOnMobile(true)}
           />
         ) : (
-          <Card className="flex h-full items-center justify-center border-border/70 bg-card">
+          <Card className="flex h-full w-full items-center justify-center border-border/70 bg-card">
             <CardContent className="text-center">
-              <Users className="mx-auto mb-3 w-12 h-12 opacity-55 text-muted-foreground" />
+              <Users className="mx-auto mb-3 h-12 w-12 text-muted-foreground opacity-55" />
               <p className="text-sm text-muted-foreground">
                 Select a user to start chatting...
               </p>

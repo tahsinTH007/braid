@@ -19,21 +19,24 @@ import {
 } from "react";
 import { type Socket } from "socket.io-client";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Send, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, MessageSquare, Send, Wifi, WifiOff } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { toast } from "sonner";
 import ImageUploadButton from "./image-upload-button";
+import { getInitials } from "@/lib/utils";
 
 type DirectChatPanelProps = {
   otherUserId: number;
   otherUser: ChatUser | null;
   socket: Socket | null;
   connected: boolean;
+  onBack?: () => void;
 };
 
 function DirectChatPanel(props: DirectChatPanelProps) {
-  const { otherUser, otherUserId, socket, connected } = props;
+  const { otherUser, otherUserId, socket, connected, onBack } = props;
   const { getToken } = useAuth();
 
   const apiClient = useMemo(() => createBrowserApiClient(getToken), [getToken]);
@@ -200,15 +203,38 @@ function DirectChatPanel(props: DirectChatPanelProps) {
       : otherUser?.displayName ?? "Conversation";
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden border-border/70 bg-card">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border pb-3">
-        <div>
-          <CardTitle className="text-base text-foreground">{title}</CardTitle>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Direct message conversation
-          </p>
+    <Card className="flex h-full w-full flex-col overflow-hidden border-border/70 bg-card py-0">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {onBack && (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              onClick={onBack}
+              className="-ml-1 shrink-0 text-muted-foreground md:hidden"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          <Avatar className="h-9 w-9 shrink-0">
+            {otherUser?.avatarUrl && (
+              <AvatarImage src={otherUser.avatarUrl} alt={title} />
+            )}
+            <AvatarFallback className="bg-secondary text-xs text-foreground">
+              {getInitials(otherUser?.handle || otherUser?.displayName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <CardTitle className="truncate text-base text-foreground">
+              {title}
+            </CardTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Direct message conversation
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <span
             className={`flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium ${
               connected
@@ -233,14 +259,25 @@ function DirectChatPanel(props: DirectChatPanelProps) {
 
       <CardContent className="flex-1 space-y-3 overflow-y-auto bg-background/60 p-4">
         {isLoading && (
-          <div className="flex items-center justify-center py-8">
-            <p className="text-xs text-muted-foreground">Loading messages...</p>
+          <div className="space-y-3">
+            <div className="flex justify-start">
+              <div className="h-10 w-40 animate-pulse rounded-2xl bg-muted" />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-10 w-32 animate-pulse rounded-2xl bg-muted" />
+            </div>
+            <div className="flex justify-start">
+              <div className="h-10 w-48 animate-pulse rounded-2xl bg-muted" />
+            </div>
           </div>
         )}
         {!isLoading && messages.length === 0 && (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex h-full flex-col items-center justify-center gap-2 py-12 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <MessageSquare className="h-5 w-5 text-primary" />
+            </div>
             <p className="text-xs text-muted-foreground">
-              No messages yet. Start the first initiative
+              No messages yet. Send the first one.
             </p>
           </div>
         )}
@@ -257,33 +294,43 @@ function DirectChatPanel(props: DirectChatPanelProps) {
 
             return (
               <div
-                className={`flex gap-2 text-xs ${
+                className={`flex items-end gap-2 text-xs ${
                   isOther ? "justify-start" : "justify-end"
                 }`}
                 key={msg.id}
               >
+                {isOther && (
+                  <Avatar className="h-6 w-6 shrink-0">
+                    {otherUser?.avatarUrl && (
+                      <AvatarImage src={otherUser.avatarUrl} alt={title} />
+                    )}
+                    <AvatarFallback className="bg-secondary text-[9px] text-foreground">
+                      {getInitials(otherUser?.handle || otherUser?.displayName)}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
                 <div className={`max-w-xs ${isOther ? "" : "order-2"}`}>
                   <div
                     className={`mb-1 text-[12px] font-medium ${
                       isOther
                         ? "text-muted-foreground"
-                        : "text-muted-foreground text-right"
+                        : "text-right text-muted-foreground"
                     }`}
                   >
-                    {label} - {time}
+                    {label} &middot; {time}
                   </div>
 
                   {msg?.body && (
                     <div
-                      className={`inline-block rounded-lg px-3 py-2 transition-colors duration-150
+                      className={`inline-block rounded-2xl px-3.5 py-2 shadow-sm transition-colors duration-150
                       ${
                         isOther
                           ? "bg-accent text-accent-foreground"
-                          : "bg-primary/80 text-primary-foreground"
+                          : "bg-primary text-primary-foreground"
                       }
                       `}
                     >
-                      <p className="wrap-break-word text-[16px] leading-relaxed">
+                      <p className="wrap-break-word text-sm leading-relaxed">
                         {msg.body}
                       </p>
                     </div>
